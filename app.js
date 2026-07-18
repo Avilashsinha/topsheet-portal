@@ -2,7 +2,7 @@
 // Designed with Client-side IndexedDB persistence, secure session control, and transcript trackers.
 
 const ADMIN_USERNAME = 'admin';
-const ADMIN_PASSWORD = 'admin';
+const ADMIN_PASSWORD = 'gajagram@123';
 
 // Real student roster — Roll Number is both the Student ID and the default password
 const STUDENT_DATA = [
