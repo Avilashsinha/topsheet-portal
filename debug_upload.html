@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IndexedDB Seeder & Upload Validator</title>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f8fafc;
+      font-family: sans-serif;
+      padding: 40px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .panel {
+      background: rgba(13, 18, 33, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 24px;
+      border-radius: 12px;
+    }
+    .log-item {
+      padding: 8px;
+      margin-bottom: 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .success { background-color: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .error { background-color: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .btn {
+      background: #6366f1;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h2>IndexedDB Test Uploader</h2>
+    <p>This script simulates bulk uploading by fetching the test files and injecting them directly into IndexedDB.</p>
+    <button class="btn" id="btn-run">Start Seeding Database</button>
+    <div id="logs" style="margin-top: 20px;"></div>
+  </div>
+
+  <script>
+    document.getElementById("btn-run").addEventListener("click", async () => {
+      const logs = document.getElementById("logs");
+      logs.innerHTML = "<p>Opening database...</p>";
+      
+      const request = indexedDB.open("VertexPortalDB", 1);
+      
+      request.onerror = (e) => {
+        logs.innerHTML += `<div class="log-item error">Database Error: ${e.target.error}</div>`;
+      };
+      
+      request.onsuccess = async (event) => {
+        const db = event.target.result;
+        logs.innerHTML += `<div class="log-item success">Database connected.</div>`;
+        
+        const filesToUpload = [
+          { url: "/test_files/STU-2601.pdf", name: "STU-2601.pdf", type: "application/pdf" },
+          { url: "/test_files/STU-2602.pdf", name: "STU-2602.pdf", type: "application/pdf" },
+          { url: "/test_files/STU-2603.png", name: "STU-2603.png", type: "image/png" },
+          { url: "/test_files/topsheet_STU-2604.jpg", name: "topsheet_STU-2604.jpg", type: "image/jpeg" }
+        ];
+
+        const idRegex = /(STU-\d{4}|STU\d{4}|\b\d{4}\b)/i;
+
+        for (const fileInfo of filesToUpload) {
+          try {
+            logs.innerHTML += `<p>Fetching ${fileInfo.name}...</p>`;
+            const res = await fetch(fileInfo.url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            
+            const blob = await res.blob();
+            
+            // Regex match student ID
+            const match = fileInfo.name.match(idRegex);
+            if (!match) throw new Error("Could not resolve student ID from name");
+            
+            let matchedId = match[0].toUpperCase();
+            if (!matchedId.startsWith("STU")) {
+              matchedId = `STU-${matchedId}`;
+            } else if (matchedId.startsWith("STU") && !matchedId.includes("-")) {
+              matchedId = matchedId.replace("STU", "STU-");
+            }
+            
+            // Write to IndexedDB
+            const transaction = db.transaction(["students"], "readwrite");
+            const store = transaction.objectStore("students");
+            
+            const getReq = store.get(matchedId);
+            await new Promise((resolve, reject) => {
+              getReq.onsuccess = () => {
+                const student = getReq.result;
+                if (student) {
+                  student.documentBlob = blob;
+                  student.documentType = fileInfo.type;
+                  student.documentName = fileInfo.name;
+                  student.uploadTime = new Date().getTime();
+                  
+                  const putReq = store.put(student);
+                  putReq.onsuccess = () => {
+                    logs.innerHTML += `<div class="log-item success">Linked ${fileInfo.name} to ${matchedId} successfully.</div>`;
+                    resolve();
+                  };
+                  putReq.onerror = () => reject(new Error("IndexedDB Put Failed"));
+                } else {
+                  reject(new Error(`Student ${matchedId} not found in database.`));
+                }
+              };
+              getReq.onerror = () => reject(new Error("IndexedDB Get Failed"));
+            });
+            
+          } catch (err) {
+            logs.innerHTML += `<div class="log-item error">Error seeding ${fileInfo.name}: ${err.message}</div>`;
+          }
+        }
+        logs.innerHTML += `<h3>Database Seeding Complete!</h3><p>You can now go back to <a href="/index.html" style="color: #6366f1;">Vertex Portal</a> and verify the student views.</p>`;
+      };
+    });
+  </script>
+</body>
+</html>
