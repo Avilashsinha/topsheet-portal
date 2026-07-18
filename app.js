@@ -1422,39 +1422,25 @@ async function seedDatabaseIfEmpty() {
           viewerWrapper.appendChild(fallback);
         }
 
-        // Download button — fetches and downloads as PDF
-        btnDownload.onclick = async () => {
-          try {
-            btnDownload.setAttribute("disabled", "true");
-            const originalText = btnDownload.innerText;
-            btnDownload.innerText = "Downloading...";
-
-            const response = await fetch(signedUrl);
-            const blob = await response.blob();
-            const localUrl = URL.createObjectURL(blob);
-
-            const link = document.createElement("a");
-            link.href = localUrl;
-
-            // Ensure proper naming and extension
-            let finalName = student.documentName || `${student.id}_topsheet.pdf`;
-            if (!finalName.toLowerCase().endsWith('.pdf') && !finalName.toLowerCase().endsWith('.png') && !finalName.toLowerCase().endsWith('.jpg') && !finalName.toLowerCase().endsWith('.jpeg')) {
-              finalName += '.pdf';
-            }
-
-            link.download = finalName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(localUrl);
-
-            btnDownload.removeAttribute("disabled");
-            btnDownload.innerText = originalText;
-          } catch (err) {
-            console.error("Direct download failed, opening in tab:", err);
-            // Fallback: open in new tab
-            window.open(signedUrl, '_blank');
+        // Download button — triggers native Supabase attachment download
+        btnDownload.onclick = () => {
+          // Ensure proper naming and extension
+          let finalName = student.documentName || `${student.id}_topsheet.pdf`;
+          if (!finalName.toLowerCase().endsWith('.pdf') && !finalName.toLowerCase().endsWith('.png') && !finalName.toLowerCase().endsWith('.jpg') && !finalName.toLowerCase().endsWith('.jpeg')) {
+            finalName += '.pdf';
           }
+
+          // Append download parameter to force server-side filename content-disposition
+          const downloadUrl = signedUrl.includes('?') 
+            ? `${signedUrl}&download=${encodeURIComponent(finalName)}` 
+            : `${signedUrl}?download=${encodeURIComponent(finalName)}`;
+
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
         };
 
       } else {
