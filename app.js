@@ -1550,8 +1550,8 @@ async function seedDatabaseIfEmpty() {
       const tr = document.createElement("tr");
 
       let statusCell = "";
-      if (student.documentBlob) {
-        statusCell = `<span class="badge badge-success" title="${student.documentName}">Ready (${(student.documentBlob.size / 1024).toFixed(0)} KB)</span>`;
+      if (student.documentPath) {
+        statusCell = `<span class="badge badge-success" title="${student.documentName || student.documentPath}">Ready ✓</span>`;
       } else {
         statusCell = `<span class="badge badge-warning">Awaiting File</span>`;
       }
@@ -1794,7 +1794,7 @@ async function seedDatabaseIfEmpty() {
     logPanel.style.display = "block";
     logList.innerHTML = "";
 
-    const idRegex = /(STU-\d{4}|STU\d{4}|\b\d{4}\b)/i;
+    const idRegex = /(STU-\d{4}|STU\d{4}|\b\d{8,12}\b|\b\d{4}\b)/i;
 
     let studentsDb = [];
     try {
@@ -1813,10 +1813,14 @@ async function seedDatabaseIfEmpty() {
       // 1. Try matching by Student ID Regex first
       if (match) {
         let matchedId = match[0].toUpperCase();
-        if (!matchedId.startsWith("STU")) {
-          matchedId = `STU-${matchedId}`;
-        } else if (matchedId.startsWith("STU") && !matchedId.includes("-")) {
-          matchedId = matchedId.replace("STU", "STU-");
+        
+        // Only prepend STU- if it's NOT an 8-to-12 digit university roll number
+        if (!/^\d{8,12}$/.test(matchedId)) {
+          if (!matchedId.startsWith("STU")) {
+            matchedId = `STU-${matchedId}`;
+          } else if (matchedId.startsWith("STU") && !matchedId.includes("-")) {
+            matchedId = matchedId.replace("STU", "STU-");
+          }
         }
 
         try {
