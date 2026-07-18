@@ -94,7 +94,7 @@ const SEED_COUNT = STUDENT_DATA.length;
 // Student records → `students` table
 // Topsheet files  → `topsheets` Storage bucket (PDFs/images)
 // ─────────────────────────────────────────────────────────────────────────────
-let supabase = null;
+let supabaseClient = null;
 const STORAGE_BUCKET = 'topsheets';
 
 function initDatabase() {
@@ -103,9 +103,9 @@ function initDatabase() {
       if (typeof SUPABASE_URL === 'undefined' || SUPABASE_URL.startsWith('YOUR_')) {
         throw new Error('Supabase not configured. Please fill in config.js with your Project URL and anon key.');
       }
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       console.log('Supabase client initialised.');
-      resolve(supabase);
+      resolve(supabaseClient);
     } catch (e) {
       reject(e);
     }
@@ -125,7 +125,7 @@ function blobToArrayBuffer(blob) {
 // ── Helper: generate a signed URL (60 min) for a Storage file path ────────────
 async function getSignedUrl(path) {
   if (!path) return null;
-  const { data, error } = await supabase.storage
+  const { data, error } = await supabaseClient.storage
     .from(STORAGE_BUCKET)
     .createSignedUrl(path, 3600);
   if (error) { console.error('Signed URL error:', error); return null; }
@@ -180,7 +180,7 @@ async function seedDatabaseIfEmpty() {
   const grades = ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C'];
 
   // Fetch current count from Supabase
-  const { count, error: countErr } = await supabase
+  const { count, error: countErr } = await supabaseClient
     .from('students')
     .select('id', { count: 'exact', head: true });
 
@@ -215,7 +215,7 @@ async function seedDatabaseIfEmpty() {
 
   // Upsert with ignoreDuplicates:true — safe to run on every startup.
   // Existing rows (with custom passwords / uploaded topsheet paths) are never touched.
-  const { error: upsertErr } = await supabase
+  const { error: upsertErr } = await supabaseClient
     .from('students')
     .upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
 
@@ -944,7 +944,7 @@ async function seedDatabaseIfEmpty() {
   // ─── SUPABASE DB ACCESS WRAPPERS ─────────────────────────────────────────────
 
   async function getAllStudents() {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('students')
       .select('*')
       .order('id');
@@ -953,7 +953,7 @@ async function seedDatabaseIfEmpty() {
   }
 
   async function getStudentById(id) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('students')
       .select('*')
       .eq('id', id)
@@ -978,10 +978,10 @@ async function seedDatabaseIfEmpty() {
 
       // Remove any old file for this student first
       if (student.documentPath) {
-        await supabase.storage.from(STORAGE_BUCKET).remove([student.documentPath]);
+        await supabaseClient.storage.from(STORAGE_BUCKET).remove([student.documentPath]);
       }
 
-      const { error: uploadErr } = await supabase.storage
+      const { error: uploadErr } = await supabaseClient.storage
         .from(STORAGE_BUCKET)
         .upload(path, buf, { contentType: mime, upsert: true });
 
@@ -991,7 +991,7 @@ async function seedDatabaseIfEmpty() {
     }
 
     const row = studentToRow(student);
-    const { error } = await supabase.from('students').upsert(row, { onConflict: 'id' });
+    const { error } = await supabaseClient.from('students').upsert(row, { onConflict: 'id' });
     if (error) throw error;
     return true;
   }
@@ -1000,22 +1000,22 @@ async function seedDatabaseIfEmpty() {
     // Also remove their topsheet file from Storage if present
     const student = await getStudentById(id);
     if (student && student.documentPath) {
-      await supabase.storage.from(STORAGE_BUCKET).remove([student.documentPath]);
+      await supabaseClient.storage.from(STORAGE_BUCKET).remove([student.documentPath]);
     }
-    const { error } = await supabase.from('students').delete().eq('id', id);
+    const { error } = await supabaseClient.from('students').delete().eq('id', id);
     if (error) throw error;
     return true;
   }
 
   async function clearAllStudentDocuments() {
     // List and delete every file in the bucket
-    const { data: fileList } = await supabase.storage.from(STORAGE_BUCKET).list();
+    const { data: fileList } = await supabaseClient.storage.from(STORAGE_BUCKET).list();
     if (fileList && fileList.length > 0) {
       const paths = fileList.map(f => f.name);
-      await supabase.storage.from(STORAGE_BUCKET).remove(paths);
+      await supabaseClient.storage.from(STORAGE_BUCKET).remove(paths);
     }
     // Null out the document columns for every student
-    const { error } = await supabase.from('students').update({
+    const { error } = await supabaseClient.from('students').update({
       document_path: null,
       document_type: null,
       document_name: null,
@@ -1165,12 +1165,12 @@ async function seedDatabaseIfEmpty() {
     if (confirm("Are you sure you want to RESET all student records? This will delete all custom additions, modifications, and uploaded documents!")) {
       try {
         // Delete all files from Storage bucket
-        const { data: fileList } = await supabase.storage.from(STORAGE_BUCKET).list();
+        const { data: fileList } = await supabaseClient.storage.from(STORAGE_BUCKET).list();
         if (fileList && fileList.length > 0) {
-          await supabase.storage.from(STORAGE_BUCKET).remove(fileList.map(f => f.name));
+          await supabaseClient.storage.from(STORAGE_BUCKET).remove(fileList.map(f => f.name));
         }
         // Delete all rows from students table
-        await supabase.from('students').delete().neq('id', '');
+        await supabaseClient.from('students').delete().neq('id', '');
         // Re-seed from hardcoded roster
         await seedDatabaseIfEmpty();
         alert(`Database reset to factory default (${SEED_COUNT} Students).`);
@@ -1924,7 +1924,7 @@ async function seedDatabaseIfEmpty() {
           updatePayload.gpa = parseFloat(parts[6].replace(/"/g, '').trim());
         }
 
-        const { error } = await supabase
+        const { error } = await supabaseClient
           .from('students')
           .update(updatePayload)
           .eq('id', id);
@@ -2042,7 +2042,7 @@ async function seedDatabaseIfEmpty() {
           rank: item.rank || 'Top 10%',
         }));
 
-        const { error } = await supabase
+        const { error } = await supabaseClient
           .from('students')
           .upsert(rows, { onConflict: 'id' });
 
