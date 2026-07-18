@@ -224,6 +224,8 @@ async function seedDatabaseIfEmpty() {
   } else {
     console.log(`Seed complete. ${count === 0 ? SEED_COUNT + ' students inserted.' : 'Existing records preserved.'}`);
   }
+}
+
 
   // --- DB ACCESS WRAPPERS ---
   const FALLBACK_TOPSHEETS = {
